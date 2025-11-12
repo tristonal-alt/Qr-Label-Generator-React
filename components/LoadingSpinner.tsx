@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-export const LoadingSpinner: React.FC = () => {
+export const LoadingSpinner: React.FC = React.memo(() => {
   return (
     <svg 
       className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" 
@@ -24,4 +24,4 @@ export const LoadingSpinner: React.FC = () => {
       ></path>
     </svg>
   );
-};
+});
