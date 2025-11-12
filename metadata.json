@@ -1,0 +1,5 @@
+{
+  "name": "QR Code Label Generator",
+  "description": "An application to generate and print QR codes from text data, formatted for barcode labels. Enter your data, generate the code, and print it with the data displayed underneath.",
+  "requestFramePermissions": []
+}
