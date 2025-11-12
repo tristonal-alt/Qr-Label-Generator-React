@@ -3,22 +3,19 @@ import React, { useState, useCallback } from 'react';
 import QRCode from 'qrcode';
 import { QrCodeDisplay } from './components/QrCodeDisplay';
 import { LoadingSpinner } from './components/LoadingSpinner';
-
-interface DisplayData {
-  stockCode: string;
-  warehouse: string;
-  bin: string;
-  productClass: string;
-}
+import { InputField } from './components/InputField';
+import { validateAllFields, generateQRData } from './utils/validation';
+import { DEFAULT_VALUES, QR_CODE_CONFIG, TEXT_SIZE_CONFIG, ERROR_MESSAGES } from './constants';
+import type { DisplayData } from './types';
 
 const App: React.FC = () => {
-  const [stockCode, setStockCode] = useState<string>('TEST-SKU-001');
-  const [warehouse, setWarehouse] = useState<string>('MAIN-WH');
-  const [bin, setBin] = useState<string>('A1-R2-S3');
-  const [productClass, setProductClass] = useState<string>('Electronics');
-  
-  const [qrCodeSize, setQrCodeSize] = useState<number>(250);
-  const [textSize, setTextSize] = useState<number>(14);
+  const [stockCode, setStockCode] = useState<string>(DEFAULT_VALUES.STOCK_CODE);
+  const [warehouse, setWarehouse] = useState<string>(DEFAULT_VALUES.WAREHOUSE);
+  const [bin, setBin] = useState<string>(DEFAULT_VALUES.BIN);
+  const [productClass, setProductClass] = useState<string>(DEFAULT_VALUES.PRODUCT_CLASS);
+
+  const [qrCodeSize, setQrCodeSize] = useState<number>(QR_CODE_CONFIG.SIZE.DEFAULT);
+  const [textSize, setTextSize] = useState<number>(TEXT_SIZE_CONFIG.DEFAULT);
 
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [displayData, setDisplayData] = useState<DisplayData | null>(null);
@@ -26,29 +23,36 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = useCallback(async () => {
-    if (!stockCode.trim() || !warehouse.trim() || !bin.trim() || !productClass.trim()) {
-      setError('All fields are required.');
+    const formData: DisplayData = { stockCode, warehouse, bin, productClass };
+
+    // Validate all fields
+    const validation = validateAllFields(formData);
+    if (!validation.isValid) {
+      setError(validation.error);
       setQrCodeUrl('');
       setDisplayData(null);
       return;
     }
+
     setIsLoading(true);
     setError(null);
 
-    const qrData = `[S]${stockCode}[W]${warehouse}[B]${bin}[P]${productClass}`;
+    // Generate QR data string
+    const qrData = generateQRData(formData);
 
     try {
       const url = await QRCode.toDataURL(qrData, {
-        errorCorrectionLevel: 'H',
+        errorCorrectionLevel: QR_CODE_CONFIG.ERROR_CORRECTION_LEVEL,
         type: 'image/png',
-        margin: 1,
+        margin: QR_CODE_CONFIG.MARGIN,
         width: qrCodeSize,
       });
       setQrCodeUrl(url);
-      setDisplayData({ stockCode, warehouse, bin, productClass });
+      setDisplayData(formData);
     } catch (err) {
-      console.error('QR Code generation failed:', err);
-      setError('Failed to generate QR code. Please try again.');
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('QR Code generation failed:', error);
+      setError(`${ERROR_MESSAGES.QR_GENERATION_FAILED} ${error.message}`);
       setQrCodeUrl('');
       setDisplayData(null);
     } finally {
@@ -56,24 +60,16 @@ const App: React.FC = () => {
     }
   }, [stockCode, warehouse, bin, productClass, qrCodeSize]);
 
-  const handlePrint = () => {
+  const handlePrint = useCallback(() => {
     window.print();
-  };
-  
-  const renderInputField = (label: string, id: string, value: string, setter: (val: string) => void) => (
-      <div className="space-y-2">
-        <label htmlFor={id} className="text-sm font-medium text-slate-300">
-          {label}
-        </label>
-        <input
-          type="text"
-          id={id}
-          value={value}
-          onChange={(e) => setter(e.target.value)}
-          className="w-full p-3 bg-slate-900 border border-slate-600 rounded-md focus:ring-2 focus:ring-cyan-500 focus:outline-none transition-shadow duration-200 text-slate-200 placeholder-slate-500"
-        />
-      </div>
-  )
+  }, []);
+
+  // Handle Enter key press to generate QR code
+  const handleKeyPress = useCallback((event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' && !isLoading) {
+      handleGenerate();
+    }
+  }, [handleGenerate, isLoading]);
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-200 flex flex-col items-center p-4 sm:p-6 font-sans">
@@ -87,41 +83,80 @@ const App: React.FC = () => {
           </p>
         </header>
 
-        <div className="w-full p-6 bg-slate-800 rounded-xl shadow-lg border border-slate-700 space-y-6">
-          
+        <div
+          className="w-full p-6 bg-slate-800 rounded-xl shadow-lg border border-slate-700 space-y-6"
+          onKeyPress={handleKeyPress}
+        >
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {renderInputField("StockCode", "stock-code", stockCode, setStockCode)}
-            {renderInputField("Warehouse", "warehouse", warehouse, setWarehouse)}
-            {renderInputField("Bin", "bin", bin, setBin)}
-            {renderInputField("ProductClass", "product-class", productClass, setProductClass)}
+            <InputField
+              label="Stock Code"
+              id="stock-code"
+              value={stockCode}
+              onChange={setStockCode}
+              ariaLabel="Enter stock code"
+            />
+            <InputField
+              label="Warehouse"
+              id="warehouse"
+              value={warehouse}
+              onChange={setWarehouse}
+              ariaLabel="Enter warehouse code"
+            />
+            <InputField
+              label="Bin"
+              id="bin"
+              value={bin}
+              onChange={setBin}
+              ariaLabel="Enter bin location"
+            />
+            <InputField
+              label="Product Class"
+              id="product-class"
+              value={productClass}
+              onChange={setProductClass}
+              ariaLabel="Enter product class"
+            />
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             <div className="space-y-2">
-                <label htmlFor="qr-size" className="text-sm font-medium text-slate-300 block">QR Code Size: <span className="font-bold">{qrCodeSize}px</span></label>
-                <input
-                    id="qr-size"
-                    type="range"
-                    min="100"
-                    max="500"
-                    step="10"
-                    value={qrCodeSize}
-                    onChange={(e) => setQrCodeSize(Number(e.target.value))}
-                    className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-                />
+              <label htmlFor="qr-size" className="text-sm font-medium text-slate-300 block">
+                QR Code Size: <span className="font-bold">{qrCodeSize}px</span>
+              </label>
+              <input
+                id="qr-size"
+                type="range"
+                min={QR_CODE_CONFIG.SIZE.MIN}
+                max={QR_CODE_CONFIG.SIZE.MAX}
+                step={QR_CODE_CONFIG.SIZE.STEP}
+                value={qrCodeSize}
+                onChange={(e) => setQrCodeSize(Number(e.target.value))}
+                aria-label={`QR code size: ${qrCodeSize} pixels`}
+                aria-valuemin={QR_CODE_CONFIG.SIZE.MIN}
+                aria-valuemax={QR_CODE_CONFIG.SIZE.MAX}
+                aria-valuenow={qrCodeSize}
+                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+              />
             </div>
             <div className="space-y-2">
-                <label htmlFor="text-size" className="text-sm font-medium text-slate-300 block">Text Size: <span className="font-bold">{textSize}px</span></label>
-                <input
-                    id="text-size"
-                    type="range"
-                    min="8"
-                    max="24"
-                    step="1"
-                    value={textSize}
-                    onChange={(e) => setTextSize(Number(e.target.value))}
-                    className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-                />
+              <label htmlFor="text-size" className="text-sm font-medium text-slate-300 block">
+                Text Size: <span className="font-bold">{textSize}px</span>
+              </label>
+              <input
+                id="text-size"
+                type="range"
+                min={TEXT_SIZE_CONFIG.MIN}
+                max={TEXT_SIZE_CONFIG.MAX}
+                step={TEXT_SIZE_CONFIG.STEP}
+                value={textSize}
+                onChange={(e) => setTextSize(Number(e.target.value))}
+                aria-label={`Text size: ${textSize} pixels`}
+                aria-valuemin={TEXT_SIZE_CONFIG.MIN}
+                aria-valuemax={TEXT_SIZE_CONFIG.MAX}
+                aria-valuenow={textSize}
+                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+              />
             </div>
           </div>
           
@@ -131,6 +166,8 @@ const App: React.FC = () => {
             <button
               onClick={handleGenerate}
               disabled={isLoading}
+              aria-label="Generate QR code"
+              aria-busy={isLoading}
               className="flex-1 inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-cyan-600 hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 focus:ring-offset-slate-900 disabled:bg-slate-500 disabled:cursor-not-allowed transition-colors"
             >
               {isLoading ? (
@@ -145,11 +182,17 @@ const App: React.FC = () => {
             <button
               onClick={handlePrint}
               disabled={!qrCodeUrl}
+              aria-label="Print QR code label"
+              aria-disabled={!qrCodeUrl}
               className="flex-1 inline-flex items-center justify-center px-6 py-3 border border-slate-600 text-base font-medium rounded-md shadow-sm text-slate-200 bg-slate-700 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Print Label
             </button>
           </div>
+
+          <p className="text-xs text-slate-400 text-center mt-2">
+            Tip: Press Enter to generate QR code
+          </p>
         </div>
         
         {qrCodeUrl && displayData && (
